@@ -4,17 +4,39 @@
 #include <pthread.h>
 #include <termios.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <time.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
 #define MONSTER_COUNT 2
 
+#define GOLD "\U000F124F"
+#define BRICK "\U000F1288"
+#define DIRT "\U000F1A48"
+#define WOOD "\U0000F06C"
+#define STONE "\U0000EB48"
+#define WATER "\U000F058C"
+#define TREE "\U0000E21C"
+#define DIAMOND "\U000F01C8"
+#define HEART "\U0000F004"
+#define RUBY "\U0000E23E"
+#define PICKAXE "\U000F08B7"
+#define AXE "\U000F08C8"
+#define SWORD "\U000F04E5"
+#define SHOVEL "\U000F0710"
+#define CHESTPLATE "\U0000EB0E"
+#define SHOES "\U000F15C7"
+#define SKULL "\U000F068C"
+#define INVENTORY "\U0000F187"
+#define PLAYER "\U0000EA67"
+#define MONSTER "\U0000F23C"
+
 typedef struct {
-	int wood;
-	int stone;
-	int dirt;
-} inventory_t;
+	char name[256];
+	char icon[4];
+	int count;
+} item_t;
 
 typedef struct {
 	int max_y;
@@ -29,7 +51,8 @@ typedef struct {
 	int x;
 	int health;
 	int kills;
-	inventory_t inv;
+	item_t inventory[45];
+	int slot;
 } player_t;
 
 world_t world;
@@ -37,6 +60,9 @@ player_t player;
 
 char *statusline;
 pthread_mutex_t world_lock;
+
+void *clear_status_thread(void *arg);
+void set_status(char *new_status);
 
 void initialize_world()
 {
@@ -59,6 +85,16 @@ void initialize_world()
 		}
 	}
 
+	player.health = 100;
+	player.inventory[0] = (item_t) { "Dirt", DIRT, 0 };
+	player.inventory[1] = (item_t) { "Wood", WOOD, 0 };
+	player.inventory[2] = (item_t) { "Stone", STONE, 0 };
+	player.inventory[3] = (item_t) { "Diamond", DIAMOND, 0 };
+	player.inventory[4] = (item_t) { "Ruby", RUBY, 0 };
+	player.inventory[5] = (item_t) { "Pickaxe", PICKAXE, 0 };
+	player.inventory[6] = (item_t) { "Axe", AXE, 0 };
+	player.inventory[7] = (item_t) { "Sword", SWORD, 0 };
+	player.inventory[8] = (item_t) { "Shovel", SHOVEL, 0 };
 	player.y = world.max_y / 2;
 	player.x = world.max_x / 2;
 	/* Initialise player position */
@@ -73,23 +109,77 @@ void initialize_world()
 	}
 }
 
+void print_icon_boxes()
+{
+	const int num_boxes = 9;
+
+	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
+	for (int i = 0; i < num_boxes; i++) {
+		if (i + 1 == player.slot) {
+			printf("\033[1m┌───┐\033[0m"); /* Bold for selected box */
+		} else {
+			printf("┌───┐");
+		}
+	}
+	printf("\n");
+
+	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
+	for (int i = 0; i < num_boxes; i++) {
+		if (i + 1 == player.slot) {
+			printf("\033[1m│ \033[38;2;255;0;0m%s\033[0m\033[1m │\033[0m", player.inventory[i].icon, player.inventory[i].count); /* Bold for selected box */
+		} else {
+			printf("│ %s │", player.inventory[i].icon, player.inventory[i].count);
+		}
+	}
+	printf("\n");
+
+	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
+	for (int i = 0; i < num_boxes; i++) {
+		if (i + 1 == player.slot) {
+			printf("\033[1m└───┘\033[0m"); /* Bold for selected box */
+		} else {
+			printf("└───┘");
+		}
+	}
+}
+
 void print_world()
 {
 	pthread_mutex_lock(&world_lock);
 	printf("\033[H");
 	for (int i = world.max_y - 1; i >= 0; i--) {
 		for (int j = 0; j < world.max_x; j++) {
-			printf("%c", world.grid[i][j]);
+			switch(world.grid[i][j]) {
+				case 'P':
+					printf("%s", PLAYER);
+					break;
+				case 'T':
+					printf("%s", TREE);
+					break;
+				case 'S':
+					printf("%s", STONE);
+					break;
+				case 'D':
+					printf("%s", DIRT);
+					break;
+				case 'M':
+					printf("%s", MONSTER);
+					break;
+				default:
+					printf("%c", world.grid[i][j]);
+					break;
+			}
 		}
 		printf("\n");
 	}
-	printf("Health: %d Kills: %d Inventory: %d Dirt %d Wood %d Stone \n", player.health, player.kills, player.inv.dirt, player.inv.wood, player.inv.stone);
-	printf("%s", statusline);
+	printf("\033[2K\033[%dC" HEART " : %d " SKULL " : %d " INVENTORY " : %d\n", world.max_x / 2 - 8, player.health, player.kills, player.inventory[player.slot - 1].count);
+	printf("\033[2K\033[%dC%s\n", world.max_x / 2 - strlen(statusline) / 2, statusline);
+	print_icon_boxes();
 	fflush(stdout);
 	pthread_mutex_unlock(&world_lock);
 }
 
-void gather_resources()
+void destory_block()
 {
 	int y = player.y;
 	int x = player.x;
@@ -106,16 +196,34 @@ void gather_resources()
 			/* Check bounds */
 			if (ny >= 0 && ny < world.max_y && nx >= 0 && nx < world.max_x) {
 				char tile = world.grid[ny][nx];
-				if (tile == 'T') {
-					player.inv.wood += 1;
-					world.grid[ny][nx] = ' ';
-				} else if (tile == 'S') {
-					player.inv.stone += 1;
-					world.grid[ny][nx] = ' ';
-				} else if (tile == 'D') {
-					player.inv.dirt += 1;
-					world.grid[ny][nx] = ' ';
+				switch (tile) {
+					case 'D':
+						if (strncmp(player.inventory[player.slot - 1].name, "Shovel", 6) != 0) {
+							set_status("You must use a shovel to mine dirt!");
+							return;
+						} else {
+							player.inventory[0].count += 1;
+						}
+						break;
+					case 'T':
+						if (strncmp(player.inventory[player.slot - 1].name, "Axe", 6) != 0) {
+							set_status("You must use an axe to mine wood!");
+							return;
+						} else {
+							player.inventory[1].count += 1;
+						}
+						player.inventory[1].count += 1;
+						break;
+					case 'S':
+						if (strncmp(player.inventory[player.slot - 1].name, "Pickaxe", 6) != 0) {
+							set_status("You must use a pickaxe to mine stone!");
+							return;
+						} else {
+							player.inventory[2].count += 1;
+						}
+						break;
 				}
+				world.grid[ny][nx] = ' ';
 			}
 		}
 	}
@@ -124,7 +232,7 @@ void gather_resources()
 void *clear_status_thread(void *arg)
 {
 	/* Wait for 2 seconds */
-	sleep(2);
+	sleep(1);
 	pthread_mutex_lock(&world_lock);
 	/* Clear the status line */
 	strcpy(statusline, "");
@@ -169,19 +277,9 @@ void move_player(char direction)
 			break;
 	}
 
-	switch (world.grid[new_y][new_x]) {
-		case 'M':
-			set_status("There's a monster in the way!");
-			return;
-		case 'T':
-			set_status("There's a tree in the way!");
-			return;
-		case 'S':
-			set_status("There's a stone in the way!");
-			return;
-		case 'D':
-			set_status("There's a dirt in the way!");
-			return;
+	/* If the block is not empty don't overlap it */
+	if (world.grid[new_y][new_x] != ' ') {
+		return;
 	}
 
 	/* Clear current player position */
@@ -199,9 +297,20 @@ void move_monsters()
 		/* Clear current monster position */
 		world.grid[world.monster_y[i]][world.monster_x[i]] = ' ';
 
-		/* Random movement for monsters */
-		world.monster_x[i] = (world.monster_x[i] + (rand() % 3 - 1) + world.max_x) % world.max_x;
-		world.monster_y[i] = (world.monster_y[i] + (rand() % 3 - 1) + world.max_y) % world.max_y;
+		/* Try a maximum of 4 random movements to avoid collision */
+		int new_x, new_y, attempts = 0;
+		do {
+			/* Random movement for monsters */
+			new_x = (world.monster_x[i] + (rand() % 3 - 1) + world.max_x) % world.max_x;
+			new_y = (world.monster_y[i] + (rand() % 3 - 1) + world.max_y) % world.max_y;
+			attempts++;
+		} while ((world.grid[new_y][new_x] != ' ') && attempts < 4);
+
+		/* Only update if the chosen position is empty */
+		if (world.grid[new_y][new_x] == ' ') {
+			world.monster_x[i] = new_x;
+			world.monster_y[i] = new_y;
+		}
 
 		/* Update monster position */
 		world.grid[world.monster_y[i]][world.monster_x[i]] = 'M';
@@ -233,8 +342,10 @@ void *player_input(void *arg)
 		char ch = getchar();
 		if (ch == 'q') {
 			break;
-		} else if (ch == 'g') {
+		} else if (ch == ' ') {
 			gather_resources();
+		} else if (isdigit(ch) > 0) {
+			player.slot = ch - '0';
 		} else {
 			move_player(ch);
 		}
@@ -244,6 +355,8 @@ void *player_input(void *arg)
 
 	/* Restore old terminal settings */
 	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	printf("\n\033[?25h");
+	exit(1);
 	return NULL;
 }
 
@@ -258,7 +371,7 @@ int main()
 	int columns = w.ws_col;
 
 	world.max_x = columns;
-	world.max_y = lines - 2;
+	world.max_y = lines - 5;
 	world.grid = malloc(world.max_y * sizeof(char *));
 
 	char status[columns];
