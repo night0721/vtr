@@ -172,7 +172,8 @@ void print_world()
 		}
 		printf("\n");
 	}
-	printf("\033[2K\033[%dC" HEART " : %d " SKULL " : %d " INVENTORY " : %d\n", world.max_x / 2 - 8, player.health, player.kills, player.inventory[player.slot - 1].count);
+	/* Center text depending on length */
+	printf("\033[2K\033[%dC" HEART " : %d " SKULL " : %d " INVENTORY " : %d\n", world.max_x / 2 - 13, player.health, player.kills, player.inventory[player.slot - 1].count);
 	printf("\033[2K\033[%dC%s\n", world.max_x / 2 - strlen(statusline) / 2, statusline);
 	print_icon_boxes();
 	fflush(stdout);
