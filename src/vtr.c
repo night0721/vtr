@@ -343,7 +343,7 @@ void *player_input(void *arg)
 		if (ch == 'q') {
 			break;
 		} else if (ch == ' ') {
-			gather_resources();
+			destory_block();
 		} else if (isdigit(ch) > 0) {
 			player.slot = ch - '0';
 		} else {
