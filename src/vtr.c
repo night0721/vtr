@@ -9,7 +9,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#define MONSTER_COUNT 2
+#define MONSTER_COUNT 10
 
 #define GOLD "\U000F124F"
 #define BRICK "\U000F1288"
@@ -50,16 +50,23 @@ enum keys {
 };
 
 typedef struct {
+	int y;
+	int x;
+	int health;
+	int attack;
+} monster_t;
+
+typedef struct {
 	char name[256];
 	char icon[4];
 	int count;
+	int attack;
 } item_t;
 
 typedef struct {
 	int max_y;
 	int max_x;
-	int monster_x[MONSTER_COUNT];
-	int monster_y[MONSTER_COUNT];
+	monster_t monsters[MONSTER_COUNT];
 	char **grid;
 } world_t;
 
@@ -105,15 +112,15 @@ void initialize_world()
 
 	player.health = 100;
 	player.slot = 1;
-	player.inventory[0] = (item_t) { "Dirt", DIRT, 0 };
-	player.inventory[1] = (item_t) { "Wood", WOOD, 0 };
-	player.inventory[2] = (item_t) { "Stone", STONE, 0 };
-	player.inventory[3] = (item_t) { "Diamond", DIAMOND, 0 };
-	player.inventory[4] = (item_t) { "Ruby", RUBY, 0 };
-	player.inventory[5] = (item_t) { "Pickaxe", PICKAXE, 0 };
-	player.inventory[6] = (item_t) { "Axe", AXE, 0 };
-	player.inventory[7] = (item_t) { "Sword", SWORD, 0 };
-	player.inventory[8] = (item_t) { "Shovel", SHOVEL, 0 };
+	player.inventory[0] = (item_t) { "Dirt", DIRT, 0, 1 };
+	player.inventory[1] = (item_t) { "Wood", WOOD, 0, 1 };
+	player.inventory[2] = (item_t) { "Stone", STONE, 0, 1 };
+	player.inventory[3] = (item_t) { "Diamond", DIAMOND, 0, 1 };
+	player.inventory[4] = (item_t) { "Ruby", RUBY, 0, 1 };
+	player.inventory[5] = (item_t) { "Pickaxe", PICKAXE, 0, 1 };
+	player.inventory[6] = (item_t) { "Axe", AXE, 0, 5 };
+	player.inventory[7] = (item_t) { "Sword", SWORD, 0, 5 };
+	player.inventory[8] = (item_t) { "Shovel", SHOVEL, 0, 0 };
 	player.y = world.max_y / 2;
 	player.x = world.max_x / 2;
 	/* Initialise player position */
@@ -121,10 +128,11 @@ void initialize_world()
 
 	/* Initialize monsters */
 	for (int i = 0; i < MONSTER_COUNT; i++) {
-		world.monster_x[i] = rand() % world.max_x;
-		world.monster_y[i] = rand() % world.max_y;
-		/* Monster position */
-		world.grid[world.monster_y[i]][world.monster_x[i]] = 'M';
+		world.monsters[i].x = rand() % world.max_x;
+		world.monsters[i].y = rand() % world.max_y;
+		world.monsters[i].health = 10;
+		world.monsters[i].attack = 1;
+		world.grid[world.monsters[i].y][world.monsters[i].x] = 'M';
 	}
 }
 
@@ -199,6 +207,16 @@ void print_world()
 	pthread_mutex_unlock(&world_lock);
 }
 
+int find_monster(int y)
+{
+	for (int i = 0; i < MONSTER_COUNT; i++) {
+		if (world.monsters[i].y == y) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 void destroy_block()
 {
 	int y = player.y;
@@ -220,28 +238,37 @@ void destroy_block()
 					case 'D':
 						if (strncmp(player.inventory[player.slot - 1].name, "Shovel", 6) != 0) {
 							set_status("You must use a shovel to mine dirt!");
-							return;
+							continue;
 						} else {
 							player.inventory[0].count += 1;
 						}
 						break;
 					case 'T':
-						if (strncmp(player.inventory[player.slot - 1].name, "Axe", 6) != 0) {
+						if (strncmp(player.inventory[player.slot - 1].name, "Axe", 3) != 0) {
 							set_status("You must use an axe to mine wood!");
-							return;
+							continue;
 						} else {
 							player.inventory[1].count += 1;
 						}
 						player.inventory[1].count += 1;
 						break;
 					case 'S':
-						if (strncmp(player.inventory[player.slot - 1].name, "Pickaxe", 6) != 0) {
+						if (strncmp(player.inventory[player.slot - 1].name, "Pickaxe", 7) != 0) {
 							set_status("You must use a pickaxe to mine stone!");
-							return;
+							continue;
 						} else {
 							player.inventory[2].count += 1;
 						}
 						break;
+					case 'M':
+						int index = find_monster(ny);
+						if (index != -1) {
+							world.monsters[index].health -= player.inventory[player.slot - 1].attack;
+							if (world.monsters[index].health <= 0) {
+								break;
+							}
+						}
+						continue;
 				}
 				world.grid[ny][nx] = ' ';
 			}
@@ -314,26 +341,27 @@ void move_player(char direction)
 void move_monsters()
 {
 	for (int i = 0; i < MONSTER_COUNT; i++) {
+		if (world.monsters[i].health <= 0) continue;
 		/* Clear current monster position */
-		world.grid[world.monster_y[i]][world.monster_x[i]] = ' ';
+		world.grid[world.monsters[i].y][world.monsters[i].x] = ' ';
 
 		/* Try a maximum of 4 random movements to avoid collision */
 		int new_x, new_y, attempts = 0;
 		do {
 			/* Random movement for monsters */
-			new_x = (world.monster_x[i] + (rand() % 3 - 1) + world.max_x) % world.max_x;
-			new_y = (world.monster_y[i] + (rand() % 3 - 1) + world.max_y) % world.max_y;
+			new_x = (world.monsters[i].x + (rand() % 3 - 1) + world.max_x) % world.max_x;
+			new_y = (world.monsters[i].y + (rand() % 3 - 1) + world.max_y) % world.max_y;
 			attempts++;
 		} while ((world.grid[new_y][new_x] != ' ') && attempts < 4);
 
 		/* Only update if the chosen position is empty */
 		if (world.grid[new_y][new_x] == ' ') {
-			world.monster_x[i] = new_x;
-			world.monster_y[i] = new_y;
+			world.monsters[i].x = new_x;
+			world.monsters[i].y = new_y;
 		}
 
 		/* Update monster position */
-		world.grid[world.monster_y[i]][world.monster_x[i]] = 'M';
+		world.grid[world.monsters[i].y][world.monsters[i].x] = 'M';
 	}
 }
 
@@ -346,7 +374,6 @@ void *monster_movement(void *arg)
 	}
 	return NULL;
 }
-
 
 int read_key()
 {
