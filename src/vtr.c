@@ -32,6 +32,23 @@
 #define PLAYER "\U0000EA67"
 #define MONSTER "\U0000F23C"
 
+enum keys {
+	BACKSPACE = 127,
+	ARROW_LEFT = 1000,
+	ARROW_RIGHT,
+	ARROW_UP,
+	ARROW_DOWN,
+	DEL_KEY,
+	HOME_KEY,
+	END_KEY,
+	PAGE_UP,
+	PAGE_DOWN,
+	LEFT_CLICK,
+	RIGHT_CLICK,
+	SCROLL_UP,
+	SCROLL_DOWN
+};
+
 typedef struct {
 	char name[256];
 	char icon[4];
@@ -59,6 +76,7 @@ world_t world;
 player_t player;
 
 char *statusline;
+int mouse_row, mouse_col;
 pthread_mutex_t world_lock;
 
 void *clear_status_thread(void *arg);
@@ -86,6 +104,7 @@ void initialize_world()
 	}
 
 	player.health = 100;
+	player.slot = 1;
 	player.inventory[0] = (item_t) { "Dirt", DIRT, 0 };
 	player.inventory[1] = (item_t) { "Wood", WOOD, 0 };
 	player.inventory[2] = (item_t) { "Stone", STONE, 0 };
@@ -180,7 +199,7 @@ void print_world()
 	pthread_mutex_unlock(&world_lock);
 }
 
-void destory_block()
+void destroy_block()
 {
 	int y = player.y;
 	int x = player.x;
@@ -328,35 +347,171 @@ void *monster_movement(void *arg)
 	return NULL;
 }
 
+
+int read_key()
+{
+	int nread;
+	char c;
+	while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+		if (nread == -1) {
+			perror("read");
+			return -1;
+		}
+	}
+
+	if (c == '\033') {
+		char seq[14];
+
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\033';
+		if (seq[0] == '[') {
+			if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\033';
+
+			/* Mouse sequence */
+			if (seq[1] == '<') {
+				static int scroll_counter = 0;
+
+				int i = 2;
+				while (i < 14 && read(STDIN_FILENO, &seq[i], 1) == 1) {
+					if (seq[i] == 'M') {
+						i++;
+						break;
+					} else if (seq[i] == 'm'){
+						return '\033';
+					}
+					i++;
+				}
+				seq[i] = '\0';  // Ensure the sequence is null-terminated
+
+				int button = -1;
+				sscanf(seq, "[<%d;%d;%d", &button, &mouse_col, &mouse_row);
+				switch (button) {
+					case 64:
+						scroll_counter++;
+						if (scroll_counter == 3) {
+							scroll_counter = 0;
+							return SCROLL_DOWN;
+						}
+						break;
+					case 65:
+						scroll_counter++;
+						if (scroll_counter == 3) {
+							scroll_counter = 0;
+							return SCROLL_UP;
+						}
+						break;
+					case 0:
+						return LEFT_CLICK;
+						break;
+					case 2:
+						return RIGHT_CLICK;
+						break;
+					default:
+						scroll_counter = 0;
+						break;
+				}
+			}
+			else if (seq[1] >= '0' && seq[1] <= '9') {
+				if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\033';
+				if (seq[2] == '~') {
+					switch (seq[1]) {
+						case '1': return HOME_KEY;
+						case '3': return DEL_KEY;
+						case '4': return END_KEY;
+						case '5': return PAGE_UP;
+						case '6': return PAGE_DOWN;
+						case '7': return HOME_KEY;
+						case '8': return END_KEY;
+					}
+				}
+			} else {
+				switch (seq[1]) {
+					case 'A': return ARROW_UP;
+					case 'B': return ARROW_DOWN;
+					case 'C': return ARROW_RIGHT;
+					case 'D': return ARROW_LEFT;
+					case 'F': return END_KEY;
+					case 'H': return HOME_KEY;
+				}
+			}
+		} else if (seq[0] == 'O') {
+			switch (seq[1]) {
+				case 'F': return END_KEY;
+				case 'H': return HOME_KEY;
+			}
+		}
+		return '\033';
+	} else {
+		return c;
+	}
+}
+
 void *player_input(void *arg)
 {
-	struct termios oldt, newt;
+	/* Hide cursor, enable mouse reporting */
+	printf("\033[?25l\033[?1000;1006h");
 
-	/* Setup non-blocking input */
+	struct termios oldt, newt;
 	tcgetattr(STDIN_FILENO, &oldt);
 	newt = oldt;
 	/* Disable canonical mode and echo */
 	newt.c_lflag &= ~(ICANON | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-	while (1) {
-		char ch = getchar();
-		if (ch == 'q') {
-			break;
-		} else if (ch == ' ') {
-			destory_block();
-		} else if (isdigit(ch) > 0) {
-			player.slot = ch - '0';
-		} else {
-			move_player(ch);
-		}
+	int loop = 1;
+	while (loop) {
+		int c = read_key();
+		switch (c) {
+			case 'q':
+				loop = 0;
+				break;
 
+			case ' ':
+				destroy_block();
+				break;
+
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				player.slot = c - '0';
+				break;
+
+			case SCROLL_UP:
+				player.slot = (player.slot % 9) + 1;
+				break;
+
+			case SCROLL_DOWN:
+				player.slot = (player.slot - 2 + 9) % 9 + 1;
+				break;
+
+			case LEFT_CLICK:
+				destroy_block();
+				break;
+
+			case RIGHT_CLICK:
+				break;
+			
+			case '\033':
+				break;
+
+			default:
+				move_player(c);
+				break;
+		}
 		print_world();
 	}
 
+	/* Show cursor and disable mouse reporting */
+	printf("\n\033[?25h\033[?1000;1006l");
+
 	/* Restore old terminal settings */
 	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-	printf("\n\033[?25h");
+
 	exit(1);
 	return NULL;
 }
@@ -383,8 +538,6 @@ int main()
 		world.grid[i] = malloc(columns);
 	}
 
-	/* Hide cursor */
- 	printf("\033[?25l");
 	pthread_mutex_init(&world_lock, NULL);
 	initialize_world();
 	print_world();
