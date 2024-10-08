@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <pthread.h>
 #include <termios.h>
@@ -8,6 +9,7 @@
 #include <time.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <limits.h>
 
 #define MONSTER_COUNT 10
 
@@ -31,6 +33,7 @@
 #define INVENTORY "\U0000F187"
 #define PLAYER "\U0000EA67"
 #define MONSTER "\U0000F23C"
+#define PATH "\033[34mX\033[0m"
 
 enum keys {
 	BACKSPACE = 127,
@@ -79,6 +82,15 @@ typedef struct {
 	int slot;
 } player_t;
 
+
+typedef struct {
+    int x, y;
+    int dist;
+} node_t;
+
+/* Directions for movement (up, down, left, right) */
+int directions[4][2] = {{0,1}, {1,0}, {0,-1}, {-1,0}};
+
 world_t world;
 player_t player;
 
@@ -93,7 +105,7 @@ void initialize_world()
 {
 	for (int i = 0; i < world.max_y; i++) {
 		for (int j = 0; j < world.max_x; j++) {
-			int rand_value = rand() % 100;
+			int rand_value = rand() % 10;
 			if (rand_value < 1) {
 				/* 1% chance for a tree */
 				world.grid[i][j] = 'T';
@@ -192,6 +204,9 @@ void print_world()
 				case 'M':
 					printf("%s", MONSTER);
 					break;
+				case 'X':
+					printf("%s", PATH);
+					break;
 				default:
 					printf("%c", world.grid[i][j]);
 					break;
@@ -205,6 +220,71 @@ void print_world()
 	print_icon_boxes();
 	fflush(stdout);
 	pthread_mutex_unlock(&world_lock);
+}
+
+void dijkstra(int start_x, int start_y, int end_x, int end_y)
+{
+	int dist[world.max_y][world.max_x];
+	bool visited[world.max_y][world.max_x];
+
+	/* Initialize distances */
+	for (int i = 0; i < world.max_y; i++) {
+		for (int j = 0; j < world.max_x; j++) {
+			dist[i][j] = INT_MAX;
+			visited[i][j] = false;
+
+		}
+	}
+	/* Starting distance is zero */
+	dist[start_y][start_x] = 0;
+
+	/* Priority queue for Dijkstra */
+	node_t queue[world.max_x * world.max_y];
+	int front = 0, rear = 0;
+	
+	queue[rear++] = (node_t){start_x, start_y, 0};
+
+	while (front < rear) {
+		node_t current = queue[front++];
+		int x = current.x, y = current.y;
+		
+		if (visited[y][x]) continue;
+		visited[y][x] = true;
+
+		if (x == end_x && y == end_y) break;
+
+		/* Explore neighbors */
+		for (int i = 0; i < 4; i++) {
+			int nx = x + directions[i][0];
+			int ny = y + directions[i][1];
+
+			if (nx >= 0 && ny >= 0 && nx < world.max_x && ny < world.max_y && world.grid[ny][nx] != 'T' && world.grid[ny][nx] != 'S' && world.grid[ny][nx] != 'D' && world.grid[ny][nx] != 'P' && world.grid[ny][nx] != 'M') {
+				int alt = dist[y][x] + 1;
+				if (alt < dist[ny][nx]) {
+					dist[ny][nx] = alt;
+					queue[rear++] = (node_t){nx, ny, alt};
+				}
+			}
+		}
+	}
+
+	/* Backtrace from end to start to mark path */
+	int x = end_x, y = end_y;
+	while (!(x == start_x && y == start_y)) {
+		/* Mark path on grid */
+		world.grid[y][x] = 'X';
+		
+		int min_dist = dist[y][x];
+		for (int i = 0; i < 4; i++) {
+			int nx = x + directions[i][0];
+			int ny = y + directions[i][1];
+			if (nx >= 0 && ny >= 0 && nx < world.max_x && ny < world.max_y && dist[ny][nx] < min_dist) {
+				min_dist = dist[ny][nx];
+				x = nx;
+				y = ny;
+			}
+		}
+	}
 }
 
 int find_monster(int y)
@@ -521,6 +601,10 @@ void *player_input(void *arg)
 				break;
 
 			case RIGHT_CLICK:
+				break;
+
+			case 'x':
+				dijkstra(0, 0, 168, 43);
 				break;
 			
 			case '\033':
