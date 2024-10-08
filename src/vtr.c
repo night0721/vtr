@@ -155,7 +155,7 @@ void print_icon_boxes()
 	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
 	for (int i = 0; i < num_boxes; i++) {
 		if (i + 1 == player.slot) {
-			printf("\033[1m┌───┐\033[0m"); /* Bold for selected box */
+			printf("┏━━━┓"); /* Bold for selected box */
 		} else {
 			printf("┌───┐");
 		}
@@ -165,7 +165,7 @@ void print_icon_boxes()
 	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
 	for (int i = 0; i < num_boxes; i++) {
 		if (i + 1 == player.slot) {
-			printf("\033[1m│ \033[38;2;255;0;0m%s\033[0m\033[1m │\033[0m", player.inventory[i].icon, player.inventory[i].count); /* Bold for selected box */
+			printf("┃ %s ┃", player.inventory[i].icon, player.inventory[i].count); /* Bold for selected box */
 		} else {
 			printf("│ %s │", player.inventory[i].icon, player.inventory[i].count);
 		}
@@ -175,7 +175,7 @@ void print_icon_boxes()
 	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
 	for (int i = 0; i < num_boxes; i++) {
 		if (i + 1 == player.slot) {
-			printf("\033[1m└───┘\033[0m"); /* Bold for selected box */
+			printf("┗━━━┛"); /* Bold for selected box */
 		} else {
 			printf("└───┘");
 		}
