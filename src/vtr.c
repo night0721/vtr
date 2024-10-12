@@ -105,7 +105,7 @@ void initialize_world()
 {
 	for (int i = 0; i < world.max_y; i++) {
 		for (int j = 0; j < world.max_x; j++) {
-			int rand_value = rand() % 10;
+			int rand_value = rand() % 100;
 			if (rand_value < 1) {
 				/* 1% chance for a tree */
 				world.grid[i][j] = 'T';
@@ -208,7 +208,7 @@ void print_world()
 					printf("%s", PATH);
 					break;
 				default:
-					printf("%c", world.grid[i][j]);
+					printf("\033[38;2;0;0;255m=\033[0m", world.grid[i][j]);
 					break;
 			}
 		}

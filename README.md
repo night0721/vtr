@@ -3,7 +3,7 @@ vtr is a 2D game aimed to recreate Skyblock.
 
 # Usage
 ```
-./vtr
+vtr
 ```
 
 # Building
