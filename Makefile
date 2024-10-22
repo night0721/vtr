@@ -1,21 +1,18 @@
 .POSIX:
 .SUFFIXES:
 
-CC = cc
 VERSION = 1.0
 TARGET = vtr
-MANPAGE = $(TARGET).1
 PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
-MANDIR = $(PREFIX)/share/man/man1
 
-# Flags
-CFLAGS = -O3 -march=native -mtune=native -pipe -s -std=c99 -pedantic -Wall -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600 -Iinclude
+CFLAGS = -O3 -march=native -mtune=native -pipe -s -std=c99 -pedantic -Wall
 
 SRC = src/*.c
+INCLUDE = include
 
 $(TARGET): $(SRC)
-	$(CC) $(SRC) -o $@ $(CFLAGS) $(LDFLAGS)
+	$(CC) $(SRC) -o $@ $(CFLAGS) -I$(INCLUDE) $(LDFLAGS)
 
 dist:
 	mkdir -p $(TARGET)-$(VERSION)
@@ -26,18 +23,14 @@ dist:
 
 install: $(TARGET)
 	mkdir -p $(DESTDIR)$(BINDIR)
-	mkdir -p $(DESTDIR)$(MANDIR)
 	cp -p $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
 	chmod 755 $(DESTDIR)$(BINDIR)/$(TARGET)
-	cp -p $(MANPAGE) $(DESTDIR)$(MANDIR)/$(MANPAGE)
-	chmod 644 $(DESTDIR)$(MANDIR)/$(MANPAGE)
 
 uninstall:
-	$(RM) $(DESTDIR)$(BINDIR)/$(TARGET)
-	$(RM) $(DESTDIR)$(MANDIR)/$(MANPAGE)
+	rm $(DESTDIR)$(BINDIR)/$(TARGET)
 
 clean:
-	$(RM) $(TARGET)
+	rm $(TARGET)
 
 all: $(TARGET)
 
