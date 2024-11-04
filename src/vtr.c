@@ -101,7 +101,7 @@ pthread_mutex_t world_lock;
 void *clear_status_thread(void *arg);
 void set_status(char *new_status);
 
-void initialize_world()
+void initialize_world(void)
 {
 	for (int i = 0; i < world.max_y; i++) {
 		for (int j = 0; j < world.max_x; j++) {
@@ -148,7 +148,7 @@ void initialize_world()
 	}
 }
 
-void print_icon_boxes()
+void print_icon_boxes(void)
 {
 	const int num_boxes = 9;
 
@@ -165,9 +165,9 @@ void print_icon_boxes()
 	printf("\033[2K\033[%dC", world.max_x / 2 - (5 * 9) / 2);
 	for (int i = 0; i < num_boxes; i++) {
 		if (i + 1 == player.slot) {
-			printf("┃ %s ┃", player.inventory[i].icon, player.inventory[i].count); /* Bold for selected box */
+			printf("┃ %s ┃", player.inventory[i].icon); /* Bold for selected box */
 		} else {
-			printf("│ %s │", player.inventory[i].icon, player.inventory[i].count);
+			printf("│ %s │", player.inventory[i].icon);
 		}
 	}
 	printf("\n");
@@ -182,7 +182,7 @@ void print_icon_boxes()
 	}
 }
 
-void print_world()
+void print_world(void)
 {
 	pthread_mutex_lock(&world_lock);
 	printf("\033[H");
@@ -208,7 +208,7 @@ void print_world()
 					printf("%s", PATH);
 					break;
 				default:
-					printf("\033[38;2;0;0;255m=\033[0m", world.grid[i][j]);
+					printf("\033[38;2;0;0;255m=\033[0m");
 					break;
 			}
 		}
@@ -216,7 +216,7 @@ void print_world()
 	}
 	/* Center text depending on length */
 	printf("\033[2K\033[%dC" HEART " : %d " SKULL " : %d " INVENTORY " : %d\n", world.max_x / 2 - 13, player.health, player.kills, player.inventory[player.slot - 1].count);
-	printf("\033[2K\033[%dC%s\n", world.max_x / 2 - strlen(statusline) / 2, statusline);
+	printf("\033[2K\033[%luC%s\n", world.max_x / 2 - strlen(statusline) / 2, statusline);
 	print_icon_boxes();
 	fflush(stdout);
 	pthread_mutex_unlock(&world_lock);
@@ -297,7 +297,7 @@ int find_monster(int y)
 	return -1;
 }
 
-void destroy_block()
+void destroy_block(void)
 {
 	int y = player.y;
 	int x = player.x;
@@ -340,7 +340,7 @@ void destroy_block()
 							player.inventory[2].count += 1;
 						}
 						break;
-					case 'M':
+					case 'M':;
 						int index = find_monster(ny);
 						if (index != -1) {
 							world.monsters[index].health -= player.inventory[player.slot - 1].attack;
@@ -418,7 +418,7 @@ void move_player(char direction)
 	world.grid[player.y][player.x] = 'P';
 }
 
-void move_monsters()
+void move_monsters(void)
 {
 	for (int i = 0; i < MONSTER_COUNT; i++) {
 		if (world.monsters[i].health <= 0) continue;
@@ -455,7 +455,7 @@ void *monster_movement(void *arg)
 	return NULL;
 }
 
-int read_key()
+int read_key(void)
 {
 	int nread;
 	char c;
@@ -627,7 +627,7 @@ void *player_input(void *arg)
 	return NULL;
 }
 
-int main()
+int main(void)
 {
 	srand(time(NULL));
 	pthread_t monster_thread, input_thread;
