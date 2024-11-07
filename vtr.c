@@ -84,8 +84,8 @@ typedef struct {
 
 
 typedef struct {
-    int x, y;
-    int dist;
+	int x, y;
+	int dist;
 } node_t;
 
 /* Directions for movement (up, down, left, right) */
